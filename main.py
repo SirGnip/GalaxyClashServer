@@ -1,10 +1,18 @@
 import os
+import random
+import string
 import time
+from dataclasses import dataclass
 from enum import Enum
 from flask import Flask, request
 from threading import Barrier
 
+
 app = Flask(__name__)
+
+MAP_WIDTH = 20
+MAP_HEIGHT = 20
+NEUTRAL = 'Neutral'
 
 
 class State(Enum):
@@ -12,12 +20,55 @@ class State(Enum):
   PLAYING = 2
   END = 3
 
+@dataclass
+class Planet:
+  name: str
+  x: int
+  y: int
+  ships: int
+  owner: str
+  production: int
+
+  @staticmethod
+  def random_planet(name):
+    x = random.randint(0, MAP_WIDTH - 1)
+    y = random.randint(0, MAP_HEIGHT - 1)
+    ships = random.randint(1, 10)
+    production = random.randint(1, 5)
+    return Planet(name, x, y, ships, NEUTRAL, production)
+
+
+class Planets:
+  def __init__(self):
+    self.planets = []
+
+  def collides(self, planet):
+    '''Tests if given planet collides with any existing planet'''
+    existing = [(p.x, p.y) for p in self.planets]
+    return (planet.x, planet.y) in existing
+  
+  def generate_map(self, planet_count, players):
+    assert planet_count >= len(players)
+    
+    # generate map
+    for planet_name in string.ascii_uppercase[:planet_count]:
+      while True:
+        planet = Planet.random_planet(planet_name)
+        if not self.collides(planet):
+          break
+      self.planets.append(planet)
+
+    # assign players
+    for player, planet in zip(players, self.planets):
+      planet.owner = player
+      planet.production = 10
+      
 
 class Game:
   def __init__(self):
     self.state = State.LOBBY
     self.clients = []
-    self.planets = []
+    self.planets = Planets()
     self.fleets = []
     self.barrier = Barrier(999)
 
@@ -32,8 +83,11 @@ class Game:
   def start_play(self):
     if self.state == State.LOBBY:
       self.state = State.PLAYING
-      self.planets.append('Altair')
-      self.planets.append('Beta')
+
+      planet_count = 10
+      print(f'Generating map with {planet_count} planets')
+      self.planets.generate_map(planet_count, self.clients)
+      
       self.init_new_turns()
     else:
       print('WARN: someone tried to start game that was already started')
@@ -42,7 +96,7 @@ class Game:
     return {
         "state": self.state.name,
         "clients": self.clients,
-        "planets": self.planets,
+        "planets": self.planets.planets,
         "fleets": self.fleets
     }
 
